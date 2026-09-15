@@ -431,12 +431,23 @@ def get_power_status(sb) -> str:
     # 精准按钮检测（class + text + disabled）
     btn_status = sb.execute_script("""
         var startActive = false, stopActive = false;
+        
+        // 优先检查侧边栏电源按钮 button.sidebar-power-btn
+        var sidebarStart = document.querySelector('button.sidebar-power-btn.power-start, .power-start');
+        var sidebarStop  = document.querySelector('button.sidebar-power-btn.power-stop, .power-stop');
+        if (sidebarStart && !sidebarStart.disabled && !sidebarStart.classList.contains('disabled')) {
+            startActive = true;
+        }
+        if (sidebarStop && !sidebarStop.disabled && !sidebarStop.classList.contains('disabled')) {
+            stopActive = true;
+        }
+
         document.querySelectorAll('button').forEach(function(b) {
-            var txt = (b.innerText || b.textContent || '').trim().toLowerCase();
+            var txt = (b.innerText || b.textContent || b.getAttribute('title') || b.getAttribute('aria-label') || '').trim().toLowerCase();
             var cls = b.className || '';
             var dis = b.disabled || b.classList.contains('disabled');
-            if (txt === 'start' && cls.includes('btn-outline-success') && !dis) startActive = true;
-            if (txt === 'stop'  && cls.includes('btn-outline-danger')  && !dis) stopActive  = true;
+            if ((txt === 'start' || txt === 'démarrer' || cls.includes('power-start')) && (cls.includes('btn-outline-success') || cls.includes('sidebar-power-btn')) && !dis) startActive = true;
+            if ((txt === 'stop'  || txt === 'arrêter'  || cls.includes('power-stop'))  && (cls.includes('btn-outline-danger')  || cls.includes('sidebar-power-btn')) && !dis) stopActive  = true;
         });
         if (stopActive  && !startActive) return 'running';
         if (startActive && !stopActive)  return 'offline';
@@ -473,13 +484,28 @@ def get_power_status(sb) -> str:
 # ── 点击 Start ─────────────────────────────────────────────
 def start_server(sb) -> bool:
     log("点击 Start 按钮...")
+    # 优先点击侧边栏的启动按钮 button.sidebar-power-btn.power-start
     r = sb.execute_script("""
+        // 1. 优先查找侧边栏控制台旁边的启动按钮
+        var btn = document.querySelector('button.sidebar-power-btn.power-start, .sidebar-power-btn.power-start, button.power-start');
+        if (btn && !btn.disabled && !btn.classList.contains('disabled')) {
+            btn.click();
+            return 'clicked_sidebar:' + btn.className;
+        }
+
+        // 2. 遍历所有可点击的启动按钮（包括英文 Start / 法文 Démarrer / class 匹配）
         var found = null;
         document.querySelectorAll('button').forEach(function(b) {
-            var txt = (b.innerText || b.textContent || '').trim().toLowerCase();
+            var txt = (b.innerText || b.textContent || b.getAttribute('title') || b.getAttribute('aria-label') || '').trim().toLowerCase();
             var cls = b.className || '';
             var dis = b.disabled || b.classList.contains('disabled');
-            if (txt === 'start' && cls.includes('btn-outline-success') && !dis) found = b;
+            if (!dis) {
+                if (cls.includes('power-start') || cls.includes('sidebar-power-btn') && (txt === 'start' || txt === 'démarrer')) {
+                    found = b;
+                } else if ((txt === 'start' || txt === 'démarrer') && cls.includes('btn-outline-success')) {
+                    found = b;
+                }
+            }
         });
         if (found) { found.click(); return 'clicked:' + found.className; }
         return 'not_found';
@@ -488,7 +514,16 @@ def start_server(sb) -> bool:
         log(f"✅ JS 精准点击 Start: {r}")
         return True
 
-    for sel in ['button:contains("Start")', '.btn-outline-success']:
+    # 备用选择器顺序点击
+    selectors = [
+        'button.sidebar-power-btn.power-start',
+        '.sidebar-power-btn.power-start',
+        'button.power-start',
+        'button:contains("Start")',
+        'button:contains("Démarrer")',
+        '.btn-outline-success'
+    ]
+    for sel in selectors:
         try:
             if sb.is_element_visible(sel):
                 sb.uc_click(sel)
@@ -575,12 +610,21 @@ def run():
 
                     final = sb.execute_script("""
                         var startActive = false, stopActive = false;
+                        var sidebarStart = document.querySelector('button.sidebar-power-btn.power-start, .power-start');
+                        var sidebarStop  = document.querySelector('button.sidebar-power-btn.power-stop, .power-stop');
+                        if (sidebarStart && !sidebarStart.disabled && !sidebarStart.classList.contains('disabled')) {
+                            startActive = true;
+                        }
+                        if (sidebarStop && !sidebarStop.disabled && !sidebarStop.classList.contains('disabled')) {
+                            stopActive = true;
+                        }
+
                         document.querySelectorAll('button').forEach(function(b) {
-                            var txt = (b.innerText||'').trim().toLowerCase();
+                            var txt = (b.innerText||b.textContent||b.getAttribute('title')||b.getAttribute('aria-label')||'').trim().toLowerCase();
                             var cls = b.className || '';
                             var dis = b.disabled || b.classList.contains('disabled');
-                            if (txt==='start' && cls.includes('btn-outline-success') && !dis) startActive=true;
-                            if (txt==='stop'  && cls.includes('btn-outline-danger')  && !dis) stopActive=true;
+                            if ((txt==='start' || txt==='démarrer' || cls.includes('power-start')) && (cls.includes('btn-outline-success') || cls.includes('sidebar-power-btn')) && !dis) startActive=true;
+                            if ((txt==='stop'  || txt==='arrêter'  || cls.includes('power-stop'))  && (cls.includes('btn-outline-danger')  || cls.includes('sidebar-power-btn')) && !dis) stopActive=true;
                         });
                         if (stopActive && !startActive) return 'running';
                         if (startActive && !stopActive) return 'offline';
